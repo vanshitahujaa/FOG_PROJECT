@@ -97,14 +97,20 @@ flowchart TD
         Res["Residual\n• ‖r‖\n• Max|r|\n• Normalized"]
     end
     
-    subgraph Models["Detection Models"]
+    subgraph Models["Detection Models (5)"]
         direction TB
-        SVM["One-Class SVM\n(Boundary Learning)"]
+        SVM["SVM\n(Boundary Learning)"]
         AE["Autoencoder\n(Reconstruction Error)"]
-        Ensemble["Ensemble\n(Majority Vote)"]
+        RF["Random Forest\n(Ensemble Trees)"]
+        KNN["KNN\n(Distance-Based)"]
+        PCA["PCA\n(T² + Q Statistic)"]
+        Ensemble["Comparison &\nBest Model Select"]
         
         SVM --> Ensemble
         AE --> Ensemble
+        RF --> Ensemble
+        KNN --> Ensemble
+        PCA --> Ensemble
     end
     
     subgraph Output["Decision"]
@@ -163,6 +169,28 @@ classDiagram
         +getReconstructionError(features) float
     }
     
+    class RandomForestModel {
+        -rf: TreeBagger
+        -normParams: struct
+        +predict(features) bool
+        +getFeatureImportance() float[]
+    }
+    
+    class KNNModel {
+        -knn: fitcknn
+        -normParams: struct
+        -k: int
+        +predict(features) bool
+    }
+    
+    class PCAModel {
+        -coeff: matrix
+        -eigenvalues: float[]
+        -T2_threshold: float
+        -Q_threshold: float
+        +predict(features) bool
+    }
+    
     class CloudLayer {
         -alertLog: Alert[]
         -aggregatedStats: struct
@@ -173,6 +201,9 @@ classDiagram
     FogNode --> DetectionModel
     SVMModel ..|> DetectionModel
     AutoencoderModel ..|> DetectionModel
+    RandomForestModel ..|> DetectionModel
+    KNNModel ..|> DetectionModel
+    PCAModel ..|> DetectionModel
     FogNode --> CloudLayer : sends alerts
 ```
 

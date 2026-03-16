@@ -8,9 +8,9 @@
 %   1. Data generation (IEEE bus system)
 %   2. FDIA attack injection
 %   3. Feature extraction
-%   4. Model training (SVM + Autoencoder)
+%   4. Model training (SVM, Autoencoder, Random Forest, KNN, PCA)
 %   5. Fog node simulation
-%   6. Performance evaluation
+%   6. Multi-model comparison and evaluation
 %
 % Requirements:
 %   - MATPOWER (https://matpower.org/)
@@ -31,6 +31,7 @@ function main(mode)
     fprintf('\n');
     fprintf('================================================================\n');
     fprintf('   FOG-ASSISTED FDIA DETECTION SYSTEM FOR SMART GRID\n');
+    fprintf('   5-Model Comparison Pipeline\n');
     fprintf('================================================================\n');
     fprintf('\n');
     
@@ -121,33 +122,53 @@ function main(mode)
     fprintf('Train features: [%d x %d]\n', size(trainFeatures));
     fprintf('Test features:  [%d x %d]\n', size(testFeatures));
     
-    %% Step 5: Train Detection Models
+    %% Step 5: Train All Detection Models
     if ~strcmp(mode, 'evalOnly')
-        fprintf('\n--- STEP 5: Training Detection Models ---\n');
+        fprintf('\n--- STEP 5: Training Detection Models (5 Models) ---\n');
         
         % Get normal training data only for unsupervised methods
         normalTrainFeatures = trainFeatures(trainWindowLabels == 0, :);
         
-        % Train SVM
-        fprintf('\n[SVM Model]\n');
+        % ----- Model 1: SVM -----
+        fprintf('\n[1/5] SVM Model\n');
         svmModel = trainSVM(trainFeatures, cfg, trainWindowLabels);
         
-        % Train Autoencoder
-        fprintf('\n[Autoencoder Model]\n');
+        % ----- Model 2: Autoencoder -----
+        fprintf('\n[2/5] Autoencoder Model\n');
         aeModel = trainAutoencoder(normalTrainFeatures, cfg);
         
-        % Save models
+        % ----- Model 3: Random Forest -----
+        fprintf('\n[3/5] Random Forest Model\n');
+        rfModel = trainRandomForest(trainFeatures, cfg, trainWindowLabels);
+        
+        % ----- Model 4: KNN -----
+        fprintf('\n[4/5] KNN Model\n');
+        knnModel = trainKNN(trainFeatures, cfg, trainWindowLabels);
+        
+        % ----- Model 5: PCA -----
+        fprintf('\n[5/5] PCA Anomaly Detection Model\n');
+        pcaModel = trainPCA(normalTrainFeatures, cfg);
+        
+        % Save all models
         save(fullfile(cfg.paths.models, 'svmModel.mat'), 'svmModel');
         save(fullfile(cfg.paths.models, 'aeModel.mat'), 'aeModel');
+        save(fullfile(cfg.paths.models, 'rfModel.mat'), 'rfModel');
+        save(fullfile(cfg.paths.models, 'knnModel.mat'), 'knnModel');
+        save(fullfile(cfg.paths.models, 'pcaModel.mat'), 'pcaModel');
+        
+        fprintf('\n✓ All 5 models trained and saved\n');
     else
         load(fullfile(cfg.paths.models, 'svmModel.mat'));
         load(fullfile(cfg.paths.models, 'aeModel.mat'));
+        load(fullfile(cfg.paths.models, 'rfModel.mat'));
+        load(fullfile(cfg.paths.models, 'knnModel.mat'));
+        load(fullfile(cfg.paths.models, 'pcaModel.mat'));
     end
     
     %% Step 6: Fog Node Simulation
     fprintf('\n--- STEP 6: Fog Node Simulation ---\n');
     
-    % Initialize fog node with SVM model
+    % Initialize fog node with SVM model (primary detector)
     fogNode = FogNode(svmModel, cfg, H);
     
     % Initialize cloud layer
@@ -166,8 +187,8 @@ function main(mode)
     fogNode.displayStatus();
     cloud.displayStatus();
     
-    %% Step 7: Evaluate Models
-    fprintf('\n--- STEP 7: Model Evaluation ---\n');
+    %% Step 7: Evaluate All Models
+    fprintf('\n--- STEP 7: Multi-Model Evaluation ---\n');
     
     % SVM Evaluation
     fprintf('\n[SVM Evaluation]\n');
@@ -179,19 +200,53 @@ function main(mode)
     [aePreds, aeScores, ~] = predictAutoencoder(aeModel, testFeatures);
     aeMetrics = computeMetrics(aePreds, testWindowLabels, aeScores);
     
-    % Compare models
-    fprintf('\n[Model Comparison]\n');
-    fprintf('%-15s %8s %8s %8s %8s\n', 'Model', 'Acc', 'Prec', 'Recall', 'F1');
-    fprintf('%s\n', repmat('-', 1, 55));
-    fprintf('%-15s %8.4f %8.4f %8.4f %8.4f\n', 'SVM', ...
-        svmMetrics.accuracy, svmMetrics.precision, svmMetrics.recall, svmMetrics.f1);
-    fprintf('%-15s %8.4f %8.4f %8.4f %8.4f\n', 'Autoencoder', ...
-        aeMetrics.accuracy, aeMetrics.precision, aeMetrics.recall, aeMetrics.f1);
+    % Random Forest Evaluation
+    fprintf('\n[Random Forest Evaluation]\n');
+    [rfPreds, rfScores, ~] = predictRandomForest(rfModel, testFeatures);
+    rfMetrics = computeMetrics(rfPreds, testWindowLabels, rfScores);
+    
+    % KNN Evaluation
+    fprintf('\n[KNN Evaluation]\n');
+    [knnPreds, knnScores, ~] = predictKNN(knnModel, testFeatures);
+    knnMetrics = computeMetrics(knnPreds, testWindowLabels, knnScores);
+    
+    % PCA Evaluation
+    fprintf('\n[PCA Evaluation]\n');
+    [pcaPreds, pcaScores, ~] = predictPCA(pcaModel, testFeatures);
+    pcaMetrics = computeMetrics(pcaPreds, testWindowLabels, pcaScores);
+    
+    %% Multi-Model Comparison Table
+    fprintf('\n');
+    fprintf('╔══════════════════════════════════════════════════════════════════════╗\n');
+    fprintf('║                    MULTI-MODEL COMPARISON TABLE                     ║\n');
+    fprintf('╠═════════════════╤══════════╤══════════╤══════════╤══════════╤═══════╣\n');
+    fprintf('║ Model           │ Accuracy │ Precis.  │ Recall   │ F1-Score │ FAR   ║\n');
+    fprintf('╠═════════════════╪══════════╪══════════╪══════════╪══════════╪═══════╣\n');
+    
+    allMetrics = {svmMetrics, aeMetrics, rfMetrics, knnMetrics, pcaMetrics};
+    modelNames = {'SVM', 'Autoencoder', 'Random Forest', 'KNN', 'PCA'};
+    
+    f1Scores = zeros(1, 5);
+    for i = 1:5
+        m = allMetrics{i};
+        f1Scores(i) = m.f1;
+        fprintf('║ %-15s │ %6.2f%%  │ %6.2f%%  │ %6.2f%%  │ %6.4f  │%5.2f%% ║\n', ...
+            modelNames{i}, m.accuracy*100, m.precision*100, m.recall*100, m.f1, m.FAR*100);
+    end
+    
+    fprintf('╚═════════════════╧══════════╧══════════╧══════════╧══════════╧═══════╝\n');
+    
+    % Identify best model
+    [bestF1, bestIdx] = max(f1Scores);
+    fprintf('\n🏆 Best Model: %s (F1 = %.4f)\n', modelNames{bestIdx}, bestF1);
     
     %% Step 8: Generate Visualizations
     fprintf('\n--- STEP 8: Generating Visualizations ---\n');
     
     plotResults(svmMetrics, testData, svmPreds, testWindowLabels, cfg, fogResults.latencies);
+    
+    % Multi-model comparison plot
+    plotModelComparison(allMetrics, modelNames, cfg);
     
     if exist('normalData', 'var') && exist('attackedData', 'var')
         plotAttackComparison(normalData, attackedData, meta, cfg);
@@ -209,12 +264,16 @@ function main(mode)
     fprintf('  Attack Ratio: %.1f%%\n', cfg.attackRatio * 100);
     fprintf('  Window Size: %d\n', cfg.windowSize);
     fprintf('\n');
-    fprintf('Best Model Performance (SVM):\n');
-    fprintf('  Accuracy:     %.2f%%\n', svmMetrics.accuracy * 100);
-    fprintf('  Precision:    %.2f%%\n', svmMetrics.precision * 100);
-    fprintf('  Recall:       %.2f%%\n', svmMetrics.recall * 100);
-    fprintf('  F1-Score:     %.4f\n', svmMetrics.f1);
-    fprintf('  False Alarm:  %.2f%%\n', svmMetrics.FAR * 100);
+    fprintf('Model Rankings (by F1-Score):\n');
+    [sortedF1, rankIdx] = sort(f1Scores, 'descend');
+    for i = 1:5
+        m = allMetrics{rankIdx(i)};
+        marker = '';
+        if i == 1, marker = ' ← BEST'; end
+        fprintf('  %d. %-15s  F1=%.4f  Acc=%.2f%%  Prec=%.2f%%  Rec=%.2f%%%s\n', ...
+            i, modelNames{rankIdx(i)}, sortedF1(i), ...
+            m.accuracy*100, m.precision*100, m.recall*100, marker);
+    end
     fprintf('\n');
     fprintf('Fog Layer Performance:\n');
     fprintf('  Avg Latency:  %.2f ms\n', fogNode.stats.avgLatency);
@@ -229,16 +288,35 @@ function main(mode)
     fprintf('================================================================\n');
 end
 
-%% Quick Demo Function
-function demo()
-    fprintf('Running quick demo with reduced dataset...\n');
+%% Multi-model comparison bar chart
+function plotModelComparison(allMetrics, modelNames, cfg)
+    figure('Name', 'Multi-Model Comparison', 'Position', [100, 100, 900, 500]);
     
-    cfg = config();
-    cfg.nSamples = 500;  % Smaller dataset for demo
-    cfg.ae.maxEpochs = 50;  % Faster training
+    nModels = length(allMetrics);
+    metricLabels = {'Accuracy', 'Precision', 'Recall', 'F1-Score', 'Specificity'};
+    data = zeros(nModels, 5);
     
-    % Override config function temporarily
-    % (In practice, you'd modify config.m)
+    for i = 1:nModels
+        m = allMetrics{i};
+        data(i, :) = [m.accuracy, m.precision, m.recall, m.f1, m.specificity];
+    end
     
-    main('full');
+    b = bar(data, 'grouped');
+    
+    % Color scheme
+    colors = [0.2 0.4 0.8; 0.9 0.3 0.3; 0.3 0.7 0.3; 0.9 0.6 0.1; 0.6 0.3 0.7];
+    for i = 1:min(5, length(b))
+        b(i).FaceColor = colors(i, :);
+    end
+    
+    set(gca, 'XTickLabel', modelNames);
+    ylabel('Score');
+    title('Multi-Model Detection Performance Comparison', 'FontSize', 14);
+    legend(metricLabels, 'Location', 'southoutside', 'Orientation', 'horizontal');
+    ylim([0, 1.15]);
+    grid on;
+    
+    if cfg.eval.savePlots
+        saveas(gcf, fullfile(cfg.eval.outputDir, 'model_comparison.png'));
+    end
 end

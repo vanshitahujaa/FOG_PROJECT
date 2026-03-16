@@ -9,10 +9,11 @@ This project implements a complete pipeline for detecting sophisticated FDIA att
 ### Key Features
 
 - **IEEE Bus System Integration**: Uses MATPOWER for realistic power system simulation
-- **Multiple Attack Types**: Bias, ramp, coordinated, and stealthy attacks
-- **Dual Detection Models**: SVM + Autoencoder for robust detection
+- **Multiple Attack Types**: Bias, ramp, coordinated, stealthy, targeted, scaling, replay
+- **5-Model Comparison**: SVM, Autoencoder, Random Forest, KNN, PCA
 - **Fog Layer Simulation**: Real-time detection with latency tracking
-- **Comprehensive Metrics**: Accuracy, Precision, Recall, F1, FAR, ROC curves
+- **Comprehensive Metrics**: Accuracy, Precision, Recall, F1, FAR, AUC-ROC
+- **Mathematical Foundation**: Full state estimation model with FDIA bypass proof
 
 ## 🚀 Quick Start
 
@@ -41,28 +42,37 @@ main
 
 ```
 FOG_PROJECT/
-├── main.m                 # Entry point - runs entire pipeline
+├── main.m                 # Entry point — 5-model comparison pipeline
+├── quickStart.m           # Quick demo with reduced dataset
 ├── config.m               # Global configuration
+├── setupMatpower.m        # MATPOWER installation helper
 ├── data/
 │   ├── generateNormalData.m   # Time-series from IEEE bus
 │   └── loadDataset.m          # Data utilities
 ├── attacks/
 │   ├── computeJacobian.m      # H matrix calculation
 │   ├── injectFDIA.m           # Attack injection (a = Hc)
-│   └── attackScenarios.m      # Predefined attack scenarios
+│   ├── attackScenarios.m      # Basic attack scenarios
+│   └── advancedAttackScenarios.m  # 10 advanced scenarios
 ├── features/
 │   ├── extractFeatures.m      # Statistical + temporal features
 │   └── computeResiduals.m     # State estimation residuals
 ├── models/
 │   ├── trainSVM.m             # One-class & binary SVM
 │   ├── trainAutoencoder.m     # Reconstruction-based detection
-│   └── detectAnomaly.m        # Unified interface
+│   ├── trainRandomForest.m    # TreeBagger ensemble
+│   ├── trainKNN.m             # K-nearest neighbors
+│   ├── trainPCA.m             # PCA anomaly detection (T² + Q)
+│   └── detectAnomaly.m        # Unified detection interface
 ├── fog/
 │   ├── FogNode.m              # Fog layer simulation
 │   └── CloudLayer.m           # Cloud logging & alerts
 ├── evaluation/
 │   ├── computeMetrics.m       # All evaluation metrics
-│   └── plotResults.m          # Visualization
+│   └── plotResults.m          # Visualization & comparison
+├── docs/
+│   ├── PROJECT_REPORT.md      # Full project report
+│   └── ARCHITECTURE.md        # System architecture diagrams
 └── results/                   # Output plots and logs
 ```
 
@@ -91,11 +101,14 @@ A stealthy FDIA attack `a = Hc` modifies measurements such that:
 
 | Metric | Target | Typical Result |
 |--------|--------|----------------|
-| Accuracy | >85% | 88-92% |
-| Precision | >80% | 85-90% |
-| Recall | >80% | 82-88% |
-| False Alarm Rate | <15% | 8-12% |
+| Accuracy | >90% | 88-95% |
+| Precision | >85% | 85-92% |
+| Recall | >85% | 82-90% |
+| F1-Score | >0.85 | 0.84-0.91 |
+| False Alarm Rate | <12% | 5-12% |
 | Detection Latency | <100ms | 15-50ms |
+
+> 📚 **Full project report with mathematical model and FDIA bypass proof:** [docs/PROJECT_REPORT.md](docs/PROJECT_REPORT.md)
 
 ## 🏃 Running Experiments
 

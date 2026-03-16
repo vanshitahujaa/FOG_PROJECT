@@ -1,16 +1,23 @@
 %% UNIFIED ANOMALY DETECTION INTERFACE
 % Provides unified interface for all detection models
 %
+% Supported models: svm, autoencoder, randomforest, knn, pca
+%
 % Usage:
 %   [prediction, score] = detectAnomaly(model, features)
+%   [prediction, score] = detectAnomaly(model, features, 'svm')
 
 function [prediction, score, details] = detectAnomaly(model, features, modelType)
     % Auto-detect model type if not specified
     if nargin < 3
         if isfield(model, 'svm')
             modelType = 'svm';
+elseif isfield(model, 'rf') modelType = 'randomforest';
+elseif isfield(model, 'knn') modelType = 'knn';
 elseif isfield(model, 'net') ||
-    isfield(model, 'coeff') modelType = 'autoencoder';
+    (isfield(model, 'coeff') &&
+     isfield(model, 'meanError')) modelType = 'autoencoder';
+elseif isfield(model, 'P') && isfield(model, 'T2_threshold') modelType = 'pca';
 else error('Unknown model type. Please specify modelType.');
         end
     end
@@ -26,6 +33,21 @@ else error('Unknown model type. Please specify modelType.');
             details.probability = prob;
             details.method = 'Autoencoder';
             details.threshold = model.threshold;
+            
+        case 'randomforest'
+            [prediction, score, prob] = predictRandomForest(model, features);
+            details.probability = prob;
+            details.method = 'Random Forest';
+            
+        case 'knn'
+            [prediction, score, prob] = predictKNN(model, features);
+            details.probability = prob;
+            details.method = 'KNN';
+            
+        case 'pca'
+            [prediction, score, prob] = predictPCA(model, features);
+            details.probability = prob;
+            details.method = 'PCA';
             
         case 'ensemble'
             % Ensemble of multiple models
