@@ -49,6 +49,11 @@ classdef FogNode < handle
             if size(obj.buffer, 1) >= obj.windowSize
                 windowData = obj.buffer(end-obj.windowSize+1:end, :);
                 [features, ~] = extractFeatures(windowData, obj.cfg, obj.H);
+                % Append 3 consensus placeholder features to match training dimensions
+                % (In real deployment, FogNode would run local consensus too)
+                if ~isempty(features)
+                    features = [features, zeros(size(features, 1), 3)];
+                end
                 if ~isempty(features)
                     [isAttack, score, details] = detectAnomaly(obj.model, features(end, :), obj.modelType);
                     if isAttack

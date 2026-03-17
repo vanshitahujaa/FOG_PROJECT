@@ -1,5 +1,5 @@
 function plotModelComparison(allMetrics, modelNames, cfg)
-    fig = figure('Name', 'Model Comparison', 'Visible', 'off', 'Position', [100 100 1200 500]);
+    fig = figure('Name', 'Model Comparison', 'Visible', 'off', 'Position', [100 100 1400 500]);
 
     % Subplot 1: Performance metrics (0-1 scale)
     subplot(1, 2, 1);
@@ -44,12 +44,12 @@ function plotModelComparison(allMetrics, modelNames, cfg)
         for j = 1:length(xData)
             if fpfnData(j, k) > 0
                 text(xData(j), yData(j) + 0.3, num2str(fpfnData(j, k)), ...
-                    'HorizontalAlignment', 'center', 'FontSize', 9, 'FontWeight', 'bold');
+                    'HorizontalAlignment', 'center', 'FontSize', 8, 'FontWeight', 'bold');
             end
         end
     end
 
-    sgtitle('Multi-Model FDIA Detection Comparison', 'FontWeight', 'bold', 'FontSize', 14);
+    sgtitle('4-Layer Consensus FDIA Detection Comparison', 'FontWeight', 'bold', 'FontSize', 14);
 
     if cfg.eval.savePlots
         saveas(gcf, fullfile(cfg.eval.outputDir, 'model_comparison.png'));
