@@ -21,18 +21,40 @@ function [data, labels, mpc, meta] = generateNormalData(cfg)
     data = zeros(cfg.nSamples, nFeatures);
     fprintf('Generating %d time-series samples...\n', cfg.nSamples);
     progressStep = floor(cfg.nSamples / 10);
+
+    % Per-sensor noise standard deviations (realistic: each sensor has different accuracy)
+    sensorNoiseStd = cfg.sensorNoiseStd;
+    V_noise_std = sensorNoiseStd * (0.5 + rand(nBuses, 1));       % Voltage: 1.5-4.5% noise
+    theta_noise_std = sensorNoiseStd * (0.8 + 1.2*rand(nBuses, 1)); % Angle: 2.4-6% noise
+    P_noise_std = sensorNoiseStd * (1.0 + 2.0*rand(nBuses, 1));     % Active power: 3-9% noise
+    Q_noise_std = sensorNoiseStd * (1.0 + 2.0*rand(nBuses, 1));     % Reactive power: 3-9% noise
+    Pf_noise_std = sensorNoiseStd * (0.8 + 1.5*rand(nBranches, 1)); % Branch P flow: 2.4-6.9% noise
+    Qf_noise_std = sensorNoiseStd * (0.8 + 1.5*rand(nBranches, 1)); % Branch Q flow: 2.4-6.9% noise
+
     for t = 1:cfg.nSamples
-        daily_factor = 1 + 0.1 * sin(2 * pi * t / cfg.period);
+        % Realistic daily load curve with multiple harmonics
+        hour_of_day = mod(t, cfg.period) / cfg.period * 24;
+        daily_factor = 1 + 0.15 * sin(2 * pi * t / cfg.period) ...
+                         + 0.05 * sin(4 * pi * t / cfg.period) ...
+                         + 0.03 * cos(6 * pi * t / cfg.period);
+
+        % Random global load fluctuation (higher variance = more realistic)
         random_factor = 1 + cfg.noise * randn();
-        if rand() < 0.05
-            spike_factor = 1 + 0.1 * rand();
+
+        % Occasional load spikes and dips (10% chance, higher magnitude)
+        if rand() < 0.10
+            spike_factor = 1 + 0.15 * (2*rand() - 1);  % +/- 15% spikes
         else
             spike_factor = 1;
         end
+
+        % PER-BUS random variation (each bus fluctuates independently)
+        bus_variation = 1 + 0.03 * randn(nBuses, 1);
+
         load_factor = daily_factor * random_factor * spike_factor;
         mpc_t = mpc;
-        mpc_t.bus(:, 3) = P_base * load_factor;
-        mpc_t.bus(:, 4) = Q_base * load_factor;
+        mpc_t.bus(:, 3) = P_base .* bus_variation * load_factor;
+        mpc_t.bus(:, 4) = Q_base .* bus_variation * load_factor;
         results_t = runpf(mpc_t, mpopt);
         if results_t.success
             V = results_t.bus(:, 8);
@@ -41,10 +63,19 @@ function [data, labels, mpc, meta] = generateNormalData(cfg)
             Q = results_t.bus(:, 4);
             Pf = results_t.branch(:, 14);
             Qf = results_t.branch(:, 15);
+
+            % Add per-sensor measurement noise (simulates real RTU/PMU inaccuracies)
+            V = V + V_noise_std .* randn(nBuses, 1) .* abs(V);
+            theta = theta + theta_noise_std .* randn(nBuses, 1);
+            P = P + P_noise_std .* randn(nBuses, 1) .* max(abs(P), 0.01);
+            Q = Q + Q_noise_std .* randn(nBuses, 1) .* max(abs(Q), 0.01);
+            Pf = Pf + Pf_noise_std .* randn(nBranches, 1) .* max(abs(Pf), 0.01);
+            Qf = Qf + Qf_noise_std .* randn(nBranches, 1) .* max(abs(Qf), 0.01);
+
             data(t, :) = [V', theta', P', Q', Pf', Qf'];
         else
             if t > 1
-                data(t, :) = data(t-1, :) .* (1 + 0.001 * randn(1, nFeatures));
+                data(t, :) = data(t-1, :) .* (1 + 0.005 * randn(1, nFeatures));
             else
                 data(t, :) = [V_base', theta_base', P_base', Q_base', Pf_base', Qf_base'];
             end

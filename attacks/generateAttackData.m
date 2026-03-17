@@ -25,6 +25,9 @@ function [attackedData, attackLabels, attackInfo] = generateAttackData(normalDat
             if strcmp(attackType, 'ramp')
                 params.rampFactor = i / length(typeIdx);
             end
+            if strcmp(attackType, 'replay') && idx > 50
+                params.historicalZ = normalData(idx - randi([10, 50]), :)';
+            end
             [z_attack, info] = injectFDIA(z, H, attackType, params);
             if length(z_attack) < nFeatures
                 attackedData(idx, 1:length(z_attack)) = z_attack';
@@ -51,6 +54,10 @@ function params = getAttackParams(attackType, cfg)
             params = cfg.attack.coordinated;
         case 'random_stealthy'
             params = cfg.attack.stealthy;
+        case 'scaling'
+            params = cfg.attack.scaling;
+        case 'targeted'
+            params = cfg.attack.targeted;
         otherwise
             params = struct();
     end
