@@ -85,16 +85,16 @@ function main(mode)
     fprintf('================================================================\n');
     fprintf('               MULTI-MODEL COMPARISON TABLE\n');
     fprintf('================================================================\n');
-    fprintf('%-15s %8s %8s %8s %8s %8s\n', 'Model', 'Accuracy', 'Precis.', 'Recall', 'F1', 'FAR');
-    fprintf('---------------------------------------------------------------\n');
+    fprintf('%-15s %8s %8s %8s %8s %8s %6s %6s\n', 'Model', 'Accuracy', 'Precis.', 'Recall', 'F1', 'FAR', 'FP', 'FN');
+    fprintf('-------------------------------------------------------------------------------\n');
     allMetrics = {svmMetrics, aeMetrics, rfMetrics, knnMetrics, pcaMetrics};
     modelNames = {'SVM', 'Autoencoder', 'RandomForest', 'KNN', 'PCA'};
     f1Scores = zeros(1, 5);
     for i = 1:5
         m = allMetrics{i};
         f1Scores(i) = m.f1;
-        fprintf('%-15s %7.2f%% %7.2f%% %7.2f%%  %6.4f %6.2f%%\n', ...
-            modelNames{i}, m.accuracy*100, m.precision*100, m.recall*100, m.f1, m.FAR*100);
+        fprintf('%-15s %7.2f%% %7.2f%% %7.2f%%  %6.4f %6.2f%% %5d %5d\n', ...
+            modelNames{i}, m.accuracy*100, m.precision*100, m.recall*100, m.f1, m.FAR*100, m.FP, m.FN);
     end
     fprintf('================================================================\n');
     [bestF1, bestIdx] = max(f1Scores);
@@ -118,8 +118,8 @@ function main(mode)
         m = allMetrics{rankIdx(i)};
         marker = '';
         if i == 1, marker = ' <- BEST'; end
-        fprintf('  %d. %-15s  F1=%.4f  Acc=%.2f%%  Prec=%.2f%%  Rec=%.2f%%%s\n', ...
-            i, modelNames{rankIdx(i)}, sortedF1(i), m.accuracy*100, m.precision*100, m.recall*100, marker);
+        fprintf('  %d. %-15s  F1=%.4f  Acc=%.2f%%  Prec=%.2f%%  Rec=%.2f%%  FP=%d  FN=%d%s\n', ...
+            i, modelNames{rankIdx(i)}, sortedF1(i), m.accuracy*100, m.precision*100, m.recall*100, m.FP, m.FN, marker);
     end
     fprintf('\nFog Layer Performance:\n');
     fprintf('  Avg Latency:  %.2f ms\n', fogNode.stats.avgLatency);
