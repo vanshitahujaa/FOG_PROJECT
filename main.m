@@ -25,20 +25,30 @@ function main(mode)
     fprintf('H matrix: [%d x %d]\n', size(H, 1), size(H, 2));
     fprintf('\n--- STEP 3: Generating FDIA Attacks ---\n');
     [attackedData, attackLabels, attackInfo] = generateAttackData(normalData, H, cfg);
-    allData = [normalData; attackedData];
-    allLabels = [zeros(size(normalData, 1), 1); attackLabels];
-    nTrain = floor(size(allData, 1) * cfg.trainRatio);
-    trainData = allData(1:nTrain, :);
-    trainLabels = allLabels(1:nTrain);
-    testData = allData(nTrain+1:end, :);
-    testLabels = allLabels(nTrain+1:end);
-    fprintf('Train: %d samples (%d attacks)\n', nTrain, sum(trainLabels));
-    fprintf('Test:  %d samples (%d attacks)\n', size(testData, 1), sum(testLabels));
+    % attackedData already contains the full dataset (normal samples with
+    % attack bursts injected). Use it directly — do NOT concat normalData again.
+    allData = attackedData;
+    allLabels = attackLabels;
+    fprintf('Dataset: %d samples (%d attacks, %d normal)\n', ...
+        size(allData, 1), sum(allLabels), sum(allLabels == 0));
     fprintf('\n--- STEP 4: Feature Extraction ---\n');
-    [trainFeatures, featureNames] = extractFeatures(trainData, cfg, H);
-    [testFeatures, ~] = extractFeatures(testData, cfg, H);
-    trainWindowLabels = computeWindowLabels(trainLabels, cfg.windowSize);
-    testWindowLabels = computeWindowLabels(testLabels, cfg.windowSize);
+    % Extract features from the FULL dataset first (preserves temporal windows)
+    [allFeatures, featureNames] = extractFeatures(allData, cfg, H);
+    allWindowLabels = computeWindowLabels(allLabels, cfg.windowSize);
+    % NOW shuffle at window level and split — ensures balanced train/test
+    nWindows = size(allFeatures, 1);
+    shuffleIdx = randperm(nWindows);
+    allFeatures = allFeatures(shuffleIdx, :);
+    allWindowLabels = allWindowLabels(shuffleIdx);
+    nTrain = floor(nWindows * cfg.trainRatio);
+    trainFeatures = allFeatures(1:nTrain, :);
+    trainWindowLabels = allWindowLabels(1:nTrain);
+    testFeatures = allFeatures(nTrain+1:end, :);
+    testWindowLabels = allWindowLabels(nTrain+1:end);
+    fprintf('Train windows: %d (%d attack, %d normal)\n', nTrain, ...
+        sum(trainWindowLabels == 1), sum(trainWindowLabels == 0));
+    fprintf('Test windows:  %d (%d attack, %d normal)\n', nWindows - nTrain, ...
+        sum(testWindowLabels == 1), sum(testWindowLabels == 0));
     fprintf('Train features: [%d x %d]\n', size(trainFeatures, 1), size(trainFeatures, 2));
     fprintf('Test features:  [%d x %d]\n', size(testFeatures, 1), size(testFeatures, 2));
     fprintf('\n--- STEP 5: Training Detection Models (5 Models) ---\n');
@@ -58,9 +68,11 @@ function main(mode)
     fprintf('\n--- STEP 6: Fog Node Simulation ---\n');
     fogNode = FogNode(svmModel, cfg, H);
     cloud = CloudLayer(cfg);
-    fprintf('Processing test data through fog node...\n');
-    timestamps = 1:size(testData, 1);
-    [fogResults, totalLatency] = fogNode.processBatch(testData, timestamps);
+    fprintf('Processing data through fog node...\n');
+    % Use a subsample of allData for fog simulation (last 30%)
+    fogTestData = allData(floor(size(allData,1)*0.7)+1:end, :);
+    timestamps = 1:size(fogTestData, 1);
+    [fogResults, totalLatency] = fogNode.processBatch(fogTestData, timestamps);
     alerts = fogNode.flushAlerts();
     cloud.receiveAlerts(alerts, 1);
     fogNode.displayStatus();
@@ -100,7 +112,7 @@ function main(mode)
     [bestF1, bestIdx] = max(f1Scores);
     fprintf('\nBest Model: %s (F1 = %.4f)\n', modelNames{bestIdx}, bestF1);
     fprintf('\n--- STEP 8: Generating Visualizations ---\n');
-    plotResults(svmMetrics, testData, svmPreds, testWindowLabels, cfg, fogResults.latencies);
+    plotResults(svmMetrics, allData, svmPreds, testWindowLabels, cfg, fogResults.latencies);
     plotModelComparison(allMetrics, modelNames, cfg);
     if exist('normalData', 'var') && exist('attackedData', 'var')
         plotAttackComparison(normalData, attackedData, meta, cfg);
@@ -109,7 +121,7 @@ function main(mode)
     fprintf('   SUMMARY REPORT\n');
     fprintf('================================================================\n');
     fprintf('IEEE Bus System: %s (%d buses)\n', cfg.busCase, meta.nBuses);
-    fprintf('Total Samples: %d\n', size(normalData, 1) + size(attackedData, 1));
+    fprintf('Total Samples: %d\n', size(allData, 1));
     fprintf('Attack Ratio: %.1f%%\n', cfg.attackRatio * 100);
     fprintf('Window Size: %d\n', cfg.windowSize);
     fprintf('\nModel Rankings (by F1-Score):\n');
