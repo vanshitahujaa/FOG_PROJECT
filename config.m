@@ -1,7 +1,7 @@
 function config = config()
     config.busCase = 'case14';
     config.nBuses = 14;
-    config.nSamples = 5000;
+    config.nSamples = 10000;
     config.trainRatio = 0.7;
     config.noise = 0.08;
     config.sensorNoiseStd = 0.03;

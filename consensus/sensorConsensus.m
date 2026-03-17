@@ -1,9 +1,10 @@
-function [trustTags, consensusScores, details] = sensorConsensus(data, mpc, cfg)
-% SENSORCONSENSUS  PBFT-based physics consensus among neighboring sensors.
-%   For each bus, neighboring buses cross-validate readings using
-%   Kirchhoff's voltage and power balance laws.
+function [trustTags, consensusScores, correctedData, details] = sensorConsensus(data, mpc, cfg)
+% SENSORCONSENSUS  PBFT-based physics consensus with data correction.
+%   For suspicious readings, replaces measured value with Kirchhoff-predicted
+%   value from neighbor consensus. This is the CORE INNOVATION.
 %   trustTags: 0 = trusted, 1 = suspicious
 %   consensusScores: anomaly score per bus per sample (0-1)
+%   correctedData: data with suspicious readings replaced by neighbor predictions
 
     [nSamples, nFeatures] = size(data);
     nBuses = size(mpc.bus, 1);
@@ -16,7 +17,6 @@ function [trustTags, consensusScores, details] = sensorConsensus(data, mpc, cfg)
     end
     fromBus = mpc.branch(:, 1);
     toBus = mpc.branch(:, 2);
-    % Map external bus numbers to internal indices
     busNums = mpc.bus(:, 1);
     for b = 1:nBranches
         fi = find(busNums == fromBus(b), 1);
@@ -30,7 +30,7 @@ function [trustTags, consensusScores, details] = sensorConsensus(data, mpc, cfg)
     % Extract voltage readings (first nBuses columns)
     V = data(:, 1:nBuses);
 
-    % Physics validation threshold (based on noise level)
+    % Physics validation threshold
     if isfield(cfg, 'sensorNoiseStd')
         physThreshold = 5 * cfg.sensorNoiseStd;
     else
@@ -39,6 +39,9 @@ function [trustTags, consensusScores, details] = sensorConsensus(data, mpc, cfg)
 
     consensusScores = zeros(nSamples, nBuses);
     trustTags = zeros(nSamples, nBuses);
+    correctedData = data;  % Start with a copy of original data
+
+    nCorrected = 0;
 
     for t = 1:nSamples
         for i = 1:nBuses
@@ -51,7 +54,6 @@ function [trustTags, consensusScores, details] = sensorConsensus(data, mpc, cfg)
 
             % Kirchhoff-based validation:
             % Predicted voltage at bus i ~ weighted average of neighbor voltages
-            % (simplified: in a lossless network, voltages propagate with small drops)
             neighborVoltages = V(t, neighbors);
             predictedV = mean(neighborVoltages);
             measuredV = V(t, i);
@@ -59,7 +61,7 @@ function [trustTags, consensusScores, details] = sensorConsensus(data, mpc, cfg)
             % Voltage deviation from neighborhood consensus
             voltageDeviation = abs(measuredV - predictedV);
 
-            % Also check if this bus's voltage is an outlier vs neighbors
+            % Z-score relative to neighbor spread
             neighborStd = std(neighborVoltages);
             if neighborStd < 1e-6
                 neighborStd = 0.01;
@@ -74,7 +76,6 @@ function [trustTags, consensusScores, details] = sensorConsensus(data, mpc, cfg)
             votesOK = 0;
             for ni = 1:nNeighbors
                 nIdx = neighbors(ni);
-                % Neighbor says "OK" if bus_i voltage is close to what they'd expect
                 expected = mean(V(t, adjList{nIdx}));
                 if abs(measuredV - expected) < physThreshold
                     votesOK = votesOK + 1;
@@ -86,6 +87,33 @@ function [trustTags, consensusScores, details] = sensorConsensus(data, mpc, cfg)
                 trustTags(t, i) = 0;  % Trusted
             else
                 trustTags(t, i) = 1;  % Suspicious
+
+                % =========================================================
+                % CORE INNOVATION: Physics-based data correction
+                % Replace suspicious measurement with Kirchhoff prediction
+                % =========================================================
+                correctedData(t, i) = predictedV;  % Voltage column
+
+                % Also correct the corresponding theta, P, Q columns
+                % using neighbor averages for those quantities too
+                thetaCol = nBuses + i;
+                pCol = 2*nBuses + i;
+                qCol = 3*nBuses + i;
+
+                if thetaCol <= nFeatures
+                    neighborThetas = data(t, nBuses + neighbors);
+                    correctedData(t, thetaCol) = mean(neighborThetas);
+                end
+                if pCol <= nFeatures
+                    neighborP = data(t, 2*nBuses + neighbors);
+                    correctedData(t, pCol) = mean(neighborP);
+                end
+                if qCol <= nFeatures
+                    neighborQ = data(t, 3*nBuses + neighbors);
+                    correctedData(t, qCol) = mean(neighborQ);
+                end
+
+                nCorrected = nCorrected + 1;
             end
         end
     end
@@ -94,5 +122,7 @@ function [trustTags, consensusScores, details] = sensorConsensus(data, mpc, cfg)
     details.adjList = adjList;
     details.physThreshold = physThreshold;
     details.flaggedRate = sum(trustTags(:)) / numel(trustTags) * 100;
-    fprintf('Sensor Consensus: %.1f%% of bus readings flagged suspicious\n', details.flaggedRate);
+    details.nCorrected = nCorrected;
+    fprintf('Sensor Consensus: %.1f%% flagged suspicious, %d values corrected\n', ...
+        details.flaggedRate, nCorrected);
 end
