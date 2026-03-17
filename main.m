@@ -247,6 +247,7 @@ function main(mode)
     fprintf('\n--- STEP 13: Generating Visualizations ---\n');
     plotResults(svmMetrics, correctedData, svmPreds, testLabels, cfg, fogResults.latencies);
     plotModelComparison(allMetrics, allModelNames, cfg);
+    plotConsensusBlockchain(trustMgr, consensusDetails, trustTags, consensusScores, ledger, cfg);
     if exist('normalData', 'var') && exist('attackedData', 'var')
         plotAttackComparison(normalData, attackedData, meta, cfg);
     end
