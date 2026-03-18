@@ -39,8 +39,45 @@ function main(mode)
     [attackedData, attackLabels, attackInfo] = generateAttackData(normalData, H, cfg);
     allData = attackedData;
     allLabels = attackLabels;
-    fprintf('Dataset: %d samples (%d attacks, %d normal)\n', ...
-        size(allData, 1), sum(allLabels), sum(allLabels == 0));
+    % ======================================================================
+    % STEP 3.5: WSN Layer Simulation (Physical deployment, clustering, aggregation)
+    % ======================================================================
+    fprintf('\n--- STEP 3.5: WSN Layer Simulation ---\n');
+    nBuses = size(mpc.bus, 1);
+    wsn = WSNLayer(500, 100, nBuses);
+    wsnData = zeros(size(allData));
+    
+    fprintf('Simulating WSN data aggregation over %d samples...\n', cfg.nSamples);
+    for t = 1:cfg.nSamples
+        % Periodic CH Re-selection based on energy and trust
+        if mod(t, 50) == 1
+            wsn.selectClusterHeads();
+        end
+        
+        % WSN collects and aggregates the true state
+        wsnData(t, :) = wsn.aggregateData(allData(t, :));
+        
+        % Close the trust loop: penalize nodes if their mapped bus is under attack. 
+        % This simulates the dynamic feedback from the detection system.
+        if allLabels(t) == 1
+            diffV = abs(allData(t, 1:nBuses) - normalData(t, 1:nBuses));
+            attackedBuses = find(diffV > 1e-4);
+            wsn.updateTrust(attackedBuses);
+        else
+            wsn.updateTrust([]);
+        end
+    end
+    
+    % Plot WSN deployment map
+    if cfg.eval.savePlots
+        wsn.plotNetwork(fullfile(cfg.eval.outputDir, 'wsn_deployment.png'));
+        fprintf('Saved wsn_deployment.png\n');
+    end
+    
+    % CRITICAL: From here, the pipeline strictly uses the WSN-aggregated data!
+    allDataOrig = allData; % Keep original for reference
+    allData = wsnData;
+
 
     % ======================================================================
     % STEP 4: LAYER 1 — Sensor Physics Consensus + Data Correction
